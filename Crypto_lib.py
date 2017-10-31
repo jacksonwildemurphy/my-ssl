@@ -24,6 +24,11 @@ def create_certificate(name):
     cert.sign(key_pair, "sha256")
     return [key_pair, cert]
 
+def certificate2bytes(certificate):
+    return crypto.dump_certificate(crypto.FILETYPE_PEM, certificate)
+
+def bytes2certificate(bits):
+    return crypto.load_certificate(crypto.FILETYPE_PEM, bits)
 # Returns True if the certificate is expired or the subject's common name
 # doesn't match what is expected
 def is_invalid_certificate(certificate, expected_name):

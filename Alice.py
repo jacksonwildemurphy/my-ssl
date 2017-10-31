@@ -1,11 +1,16 @@
 # Written by Jackson Murphy. Last updated October 31, 2017
 
 import Crypto_lib as crypto
+from socket import *
+
 
 def _send_algs_and_cert(encryption_alg, integrity_protection_alg, certificate, socket):
     # delimit algorithms with a semicolon
     delimiter = ";".encode()
-    msg = encryption_alg + delimiter + integrity_protection_alg + delimiter + certificate
+    msg = encryption_alg + delimiter + integrity_protection_alg + delimiter
+    certificate_bytes = crypto.certificate2bytes(certificate)
+    print("certificate is this many bites:", len(certificate_bytes))
+    msg += certificate_bytes
     socket.send(msg)
     return msg
 
@@ -13,10 +18,10 @@ def _send_algs_and_cert(encryption_alg, integrity_protection_alg, certificate, s
 def _parse_first_msg(msg, key_pair):
     certificate_len = x
     certificate_bytes = msg[:certificate_len]
-    certificate = crypto.load_certificate(crypto.FILETYPE_PEM, certificate_bytes)
+    certificate = crypto.bytes2certificate(certificate_bytes)
     encrypted_nonce = msg[certificate_len:]
     alices_privatekey = crypto.get_privatekey(key_pair)
-    nonce = crypto.decrypt_with_privatekey(encrypted_nonce)
+    nonce = int(crypto.decrypt_with_privatekey(encrypted_nonce))
     return [certificate, nonce]
 
 
@@ -51,7 +56,7 @@ bobs_publickey = crypto.get_publickey(bobs_cert)
 
 # Create a nonce, encrypt it, and send it to Bob
 alices_nonce = crypto.create_nonce()
-alices_encrypted_nonce = crypto.encrypt_with_publickey(alices_nonce, bobs_publickey)
+alices_encrypted_nonce = crypto.encrypt_with_publickey(str(alices_nonce), bobs_publickey)
 second_msg_to_bob = _send_encrypted_nonce(alices_encrypted_nonce, client_socket)
 
 # Get a master secret from the  two nonces
@@ -83,8 +88,4 @@ connection_socket.send(keyed_hash.encode())
 
 
 
-
-
-
-
-    pass
+pass
