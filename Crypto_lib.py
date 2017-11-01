@@ -37,9 +37,15 @@ def is_invalid_certificate(certificate, expected_name):
     else:
         return False
 
-# Extracts the public key from a certificate and returns it
+# Returns an RSA  public key from a certificate
 def get_publickey(certificate):
-    return certificate.get_pubkey()
+    public_key_file = open("public_key.pem", "wb+")
+    cert_publickey = certificate.get_pubkey()
+    public_key_file.write(crypto.dump_publickey(crypto.FILETYPE_PEM, cert_publickey))
+    public_key_file.close()
+    public_key = RSA.importKey(open("public_key.pem").read())
+    # TODO delete file
+    return public_key
 
 # Returns an RSA private key object from a PKey key pair
 def get_privatekey(key_pair):
@@ -53,9 +59,9 @@ def get_privatekey(key_pair):
 # Returns encrypted data with the public key
 def encrypt_with_publickey(data, publickey):
     if type(data) is bytes:
-        return publickey.encrypt(data, b"ignored")
+        return publickey.encrypt(data, b"ignored")[0] # nonce is 1st el of tuple
     elif type(data) is str:
-        return publickey.encrypt(data.encode(), b"ignored")
+        return publickey.encrypt(data.encode(), b"ignored")[0]
     else:
         raise Exception("Expected data type of bytes or str but got:", type(data))
 
@@ -78,8 +84,8 @@ def hash_handshake(master_secret, messages, role):
     contents += str(master_secret)
     # convert messages to strings
     for msg in messages:
-        msg_64 = base64.encode(msg)
-        contents += base64.decode(msg_64)
+        msg_64 = base64.encodestring(msg)
+        contents += msg_64.decode()
     contents += role
     h = SHA.new(contents)
     print("Hashed handshake was:", h)
@@ -98,29 +104,28 @@ def hash_is_invalid(test_hash, master_secret, messages, role):
 
 # convert to bits
 # msg = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-#
-# # convert back, verify certificate and get public key
+
+# convert back, verify certificate and get public key
 # certificate = crypto.load_certificate(crypto.FILETYPE_PEM, msg)
 # pubkey_bob = certificate.get_pubkey()
 # sender = certificate.get_subject().commonName
 # print("The sender was:", sender)
+
+# Encoded a nonce with bob's public key
+# nonce = str(create_nonce()).encode()
 #
-# # Encoded a nonce with bob's public key
-# nonce = b"abcd"
-#
-# public_key_file = open("pub_key_bob.pem", "wb+")
-# public_key_file.write(crypto.dump_publickey(crypto.FILETYPE_PEM, pubkey_bob))
-# public_key_file.close()
+# # public_key_file = open("public_key.pem", "wb+")
+# # public_key_file.write(crypto.dump_publickey(crypto.FILETYPE_PEM, pubkey_bob))
+# # public_key_file.close()
 #
 # pubkey = RSA.importKey(open("pub_key_bob.pem").read())
-# ciphertext = pubkey.encrypt(nonce, b"ignored")
+# ciphertext = pubkey.encrypt(nonce, b"ignored")[0]
+# print("ciphertext is:", ciphertext)
 #
-# private_key_file = open("private_key.pem", "wb+")
-# private_key_file.write(crypto.dump_privatekey(crypto.FILETYPE_PEM, key_pair))
-# private_key_file.close()
+#
 # private_key = RSA.importKey(open("private_key_bob.pem").read())
 #
 # original_nonce = private_key.decrypt(ciphertext)
-
+#
 # print("finished!")
 # print("nonce was:", original_nonce)

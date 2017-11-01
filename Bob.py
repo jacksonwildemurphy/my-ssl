@@ -27,6 +27,7 @@ def _parse_first_msg(msg):
 def _send_cert_and_encrypted_nonce(certificate, bobs_encrypted_nonce, socket):
     certificate_bytes = crypto.certificate2bytes(certificate)
     print("Certificate is this many bites:", len(certificate_bytes))
+    print("encrypted nonce is:", bobs_encrypted_nonce)
     msg = certificate_bytes + bobs_encrypted_nonce
     socket.send(msg)
     return msg
@@ -53,6 +54,7 @@ while 1:
     [key_pair, bobs_certificate] = crypto.create_certificate("Bob")
     alices_publickey = crypto.get_publickey(alices_cert)
     bobs_nonce = crypto.create_nonce()
+    print("Created nonce:", bobs_nonce)
     bobs_encrypted_nonce = crypto.encrypt_with_publickey(str(bobs_nonce), alices_publickey)
     first_msg_to_alice = _send_cert_and_encrypted_nonce(bobs_certificate, bobs_encrypted_nonce, connection_socket)
 
@@ -60,10 +62,13 @@ while 1:
     second_msg_from_alice = connection_socket.recv(1024)
     alices_encrypted_nonce = second_msg_from_alice
     bobs_privatekey = crypto.get_privatekey(key_pair)
-    alices_nonce = int(crypto.decrypt_with_privatekey(alices_encrypted_nonce, bobs_privatekey))
-
+    alices_nonce = (crypto.decrypt_with_privatekey(alices_encrypted_nonce, bobs_privatekey))
+    alices_nonce = int(alices_nonce.decode())
+    print("Alice's nonce is:", alices_nonce)
+    
     # Get a master secret from the  two nonces
     master_secret = crypto.get_master_secret(bobs_nonce, alices_nonce)
+    print("Got master secret:", master_secret, "\n")
 
     # Compute a keyed hash of the master secret, previous handshake messages, and "SERVER"
     messages = [first_msg_from_alice, first_msg_to_alice, second_msg_from_alice]
