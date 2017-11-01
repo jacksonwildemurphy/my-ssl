@@ -22,7 +22,7 @@ def _parse_first_msg(msg, key_pair):
     alices_privatekey = crypto.get_privatekey(key_pair)
     nonce = crypto.decrypt_with_privatekey(encrypted_nonce, alices_privatekey)
     nonce = int(nonce.decode())
-    print("got nonce:", nonce)
+    print("Got nonce from Bob:", nonce, "\n")
     return [certificate, nonce]
 
 
@@ -73,10 +73,17 @@ keyed_hash = crypto.hash_handshake(master_secret, messages, "CLIENT")
 # Receive Bob's hash of the handshake and verify it
 bobs_hash = client_socket.recv(1024).decode()
 if crypto.hash_is_invalid(bobs_hash, master_secret, messages, "SERVER"):
-    print("Received a bad hash from Alice!")
+    print("Received a bad hash from Bob!\n")
+else:
+    print("Bob's keyed hash passes verification!\n")
 
 # Send Bob our hash of the handshake
-connection_socket.send(keyed_hash.encode())
+client_socket.send(keyed_hash.encode())
+
+# Derive encryption and integrity protection keys from the handshake
+[write_encr_key, read_decr_key, write_integ_key, read_integ_key] = \
+    crypto.generate_keys_from_handshake(master_secret, alices_nonce, bobs_nonce)
+print("Generated the 4 keys\n\nHandshake complete!\n")
 
 
 
