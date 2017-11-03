@@ -86,9 +86,8 @@ while 1:
 
     # Securely send a file to Alice
     f = open("2017PA4.pdf", "rb")
-    crypto.my_ssl_send_file(f, write_encr_key, write_integ_key, connection_socket)
+    file_bytes = f.read()
+    crypto.send_data(file_bytes, write_encr_key, write_integ_key, connection_socket)
 
-
-
-
-    pass
+    # all done
+    connection_socket.close()

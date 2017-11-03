@@ -14,6 +14,12 @@ from struct import *
 
 # Encryption block size for 3DES
 DES3_BLOCK_SIZE = 64
+# The maximum number of raw bytes allowed in the ssl-record data field
+MAX_DATA_LEN = 16000  # 16 KB
+# The size of MAX_DATA_LEN after base64 encoding
+MAX_BASE64_DATA_LEN = 21617
+# Size of a message authentication code digest
+HMAC_LEN = 64
 # Initialization vector 8 bytes long
 IV = b"00000000"
 
@@ -134,40 +140,85 @@ def generate_keys_from_handshake(master_secret, nonce1, nonce2):
     key4 = digest[48:]
     return [key1, key2, key3, key4]
 
-def my_ssl_send_file(file, encryption_key, integrity_key, socket):
-    file_bytes = file.read()
-    print("File is this many bytes:", len(file_bytes))
-    MAX_DATA_LEN = 16000  # 16 KB
+def send_data(data, encryption_key, integrity_key, socket):
+    print("File is this many bytes:", len(data))
     # split the bytes of the file into an array where each el has size MAX_DATA_LEN
-    file_bytes_arr = bytestr2array(file_bytes, MAX_DATA_LEN)
+    data_arr = bytestr2array(data, MAX_DATA_LEN)
     sequence_num = 0
     msg = b"" # initialize the aggregate message to be sent
-    for chunk in file_bytes_arr:
+    for chunk in data_arr:
         msg += blockify_data(chunk, sequence_num, encryption_key, integrity_key)
         sequence_num += 1
     print("Message to send to alice is this long:", len(msg))
+    print("Encryption key:", encryption_key)
+     print("Integrity key:", integrity_key)
     socket.send(msg)
 
 # returns a SSL-like record block for the data. The difference from a typical
 # SSL record is that here the record header only includes data-length
 def blockify_data(data, sequence_num, encryption_key, integrity_key):
     data_len = len(base64.encodestring(data))
-    print("Data length before encoding was:", len(data))
-    print("Data length after encoding is:", data_len)
-    #print("Data length after decoding is:", len(base64.encodestring(data).decode()))
     data_len_bin = pack("H", data_len) # unsigned 2-byte representation of data_len
-    hmac = get_hmac(sequence_num, data_len_bin, data, integrity_key)
-    padding_len = DES3_BLOCK_SIZE - ((data_len + len(hmac)) % DES3_BLOCK_SIZE)
+    padding_len = DES3_BLOCK_SIZE - ((data_len + HMAC_LEN) % DES3_BLOCK_SIZE)
+    padding_len_bin = pack("H", padding_len)
     padding = "0" * padding_len
+    record_header = data_len_bin + padding_len_bin
+    hmac = get_hmac(sequence_num, record_header, data, integrity_key)
     to_encrypt = base64.encodestring(data).decode() + hmac + padding
     ciphertext = des3_encrypt(encryption_key, IV, to_encrypt)
-    block = data_len_bin + ciphertext
+    block = record_header + ciphertext
     print("block has size:", len(block))
-    print("Test!")
-    print("Encoded bytes:", base64.encodestring(b"hello"))
-    print("Decoded encoded bites:", base64.encodestring(b"hello").decode())
-    print("Should be original:", base64.decodestring(base64.encodestring(b"hello").decode()))
+    #print("Test!")
+    #print("Encoded bytes:", base64.encodestring(b"hello"))
+    #print("Decoded encoded bites:", base64.encodestring(b"hello").decode())
+    #print("Should be original:", base64.decodestring(base64.encodestring(b"hello").decode()))
     return block
+
+def receive_data(read_decr_key, read_integ_key, socket):
+    received_bytes = b"" # initialize
+    # get all the records from Bob before processing
+    while True:
+        received_chunk = socket.recv(4096)
+        if len(received_chunk) == 0:
+            break
+        received_bytes += received_chunk
+    print("Alice received data from bob this long:", len(received_bytes))
+    print("Decryption key:", read_decr_key)
+     print("Integrity key:", read_integ_key)
+    data = get_data_from_records(received_bytes, read_decr_key, read_integ_key)
+    return data
+
+
+# extracts data from the ssl-like record blocks
+def get_data_from_records(received_bytes, read_decr_key, read_integ_key):
+    sequence_num = 1
+    received_bytes_len = len(received_bytes)
+    processed_bytes_len = 0
+    data = b""
+    while processed_bytes_len < received_bytes_len:
+        record_header = received_bytes[:4]
+        data_len = unpack("H", record_header[:2])[0]
+        print("unpacked the data length and it was:", data_len)
+        padding_len = unpack("H", record_header[2:4])[0]
+        print("unpacked padding length was:", padding_len)
+        encrypted_bytes_len = data_len + HMAC_LEN + padding_len
+        unencrypted_bytes = des3_decrypt(
+            read_decr_key, IV, received_bytes[4:4+encrypted_bytes_len])
+        record_data = unencrypted_bytes[:data_len]
+        hmac = unencrypted_bytes[data_len:data_len + HMAC_LEN].decode()
+        if hmac_is_invalid(
+            hmac, sequence_num, record_header, record_data, read_integ_key):
+            print("The hmac was invalid for record number:", sequence_num)
+        data += record_data
+        print("finished processing record number:", sequence_num, "\n")
+        sequence_num += 1
+        if data_len < MAX_BASE64_DATA_LEN: # this was the last record
+            break
+        # remove the bytes we just looked at
+        received_bytes = received_bytes[(len(record_header) + encrypted_bytes_len):]
+    return data
+
+
 
 
 def bytestr2array(bytestr, el_size):
@@ -184,11 +235,11 @@ def bytestr2array(bytestr, el_size):
     return bytes_arr
 
 # Returns the SSL hmac as a hex string
-def get_hmac(sequence_num, data_len_bin, data, integrity_key):
+def get_hmac(sequence_num, record_header, data, integrity_key):
     m1 = hashlib.sha256()
     m1.update(integrity_key)
     m1.update(str(sequence_num).encode())
-    m1.update(data_len_bin)
+    m1.update(record_header)
     m1.update(data)
     inner_hash = m1.digest()
     m2 = hashlib.sha256()
@@ -196,7 +247,16 @@ def get_hmac(sequence_num, data_len_bin, data, integrity_key):
     m2.update(inner_hash)
     return m2.hexdigest()
 
-
+# Calculates the hmac of the input parameters (except the first),
+# and compares this result with the expected hash (the first parameter)
+# Supplied hmac should be in hexstring format
+def hmac_is_invalid(hmac, sequence_num, record_header, data, integrity_key):
+    calculated_hmac = get_hmac(sequence_num, record_header, data, integrity_key)
+    if hmac != calculated_hmac:
+        print("Hmac invalid! Was expecting:", hmac, "but got:", calculated_hmac)
+        return True
+    else:
+        return False
 
 # convert to bits
 # msg = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)

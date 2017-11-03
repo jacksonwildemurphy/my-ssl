@@ -85,6 +85,9 @@ client_socket.send(keyed_hash.encode())
     crypto.generate_keys_from_handshake(master_secret, alices_nonce, bobs_nonce)
 print("Generated the 4 keys\n\nHandshake complete!\n")
 
+# Securely  receive file from Bob
+f = crypto.receive_data(read_decr_key, read_integ_key, client_socket)
+
 
 
 
