@@ -1,6 +1,7 @@
 # Written by Jackson Murphy. Last updated October 31, 2017
 
 import Crypto_lib as crypto
+import filecmp
 from socket import *
 
 
@@ -85,21 +86,13 @@ client_socket.send(keyed_hash.encode())
     crypto.generate_keys_from_handshake(master_secret, alices_nonce, bobs_nonce)
 print("Generated the 4 keys\n\nHandshake complete!\n")
 
-# Securely  receive file from Bob
-f = crypto.receive_data(read_decr_key, read_integ_key, client_socket)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-pass
+# Securely receive file from Bob and diff with the original
+data = crypto.receive_data(read_decr_key, read_integ_key, client_socket)
+f = open("received_file", "wb+")
+f.write(data)
+f.close()
+filecmp.clear_cache()
+if filecmp.cmp("2017PA4.pdf", "received_file"):
+    print("Diffed the files and they are the same!\n")
+else:
+    print("Diff check failed. The 2 files are not the same\n")

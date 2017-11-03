@@ -18,7 +18,7 @@ DES3_BLOCK_SIZE = 64
 MAX_DATA_LEN = 16000  # 16 KB
 # The size of MAX_DATA_LEN after base64 encoding
 MAX_BASE64_DATA_LEN = 21617
-# Size of a message authentication code digest
+# Character length of a message authentication code digest (hexstring)
 HMAC_LEN = 64
 # Initialization vector 8 bytes long
 IV = b"00000000"
@@ -141,7 +141,7 @@ def generate_keys_from_handshake(master_secret, nonce1, nonce2):
     return [key1, key2, key3, key4]
 
 def send_data(data, encryption_key, integrity_key, socket):
-    print("File is this many bytes:", len(data))
+    print("Sending file with this many bytes:", len(data), "\n")
     # split the bytes of the file into an array where each el has size MAX_DATA_LEN
     data_arr = bytestr2array(data, MAX_DATA_LEN)
     sequence_num = 0
@@ -149,9 +149,6 @@ def send_data(data, encryption_key, integrity_key, socket):
     for chunk in data_arr:
         msg += blockify_data(chunk, sequence_num, encryption_key, integrity_key)
         sequence_num += 1
-    print("Message to send to alice is this long:", len(msg))
-    print("Encryption key:", encryption_key)
-     print("Integrity key:", integrity_key)
     socket.send(msg)
 
 # returns a SSL-like record block for the data. The difference from a typical
@@ -167,11 +164,6 @@ def blockify_data(data, sequence_num, encryption_key, integrity_key):
     to_encrypt = base64.encodestring(data).decode() + hmac + padding
     ciphertext = des3_encrypt(encryption_key, IV, to_encrypt)
     block = record_header + ciphertext
-    print("block has size:", len(block))
-    #print("Test!")
-    #print("Encoded bytes:", base64.encodestring(b"hello"))
-    #print("Decoded encoded bites:", base64.encodestring(b"hello").decode())
-    #print("Should be original:", base64.decodestring(base64.encodestring(b"hello").decode()))
     return block
 
 def receive_data(read_decr_key, read_integ_key, socket):
@@ -182,35 +174,33 @@ def receive_data(read_decr_key, read_integ_key, socket):
         if len(received_chunk) == 0:
             break
         received_bytes += received_chunk
-    print("Alice received data from bob this long:", len(received_bytes))
-    print("Decryption key:", read_decr_key)
-     print("Integrity key:", read_integ_key)
+    print("Alice received data from Bob!\n")
     data = get_data_from_records(received_bytes, read_decr_key, read_integ_key)
     return data
 
 
 # extracts data from the ssl-like record blocks
 def get_data_from_records(received_bytes, read_decr_key, read_integ_key):
-    sequence_num = 1
+    sequence_num = 0 # initialize
     received_bytes_len = len(received_bytes)
     processed_bytes_len = 0
     data = b""
     while processed_bytes_len < received_bytes_len:
         record_header = received_bytes[:4]
         data_len = unpack("H", record_header[:2])[0]
-        print("unpacked the data length and it was:", data_len)
         padding_len = unpack("H", record_header[2:4])[0]
-        print("unpacked padding length was:", padding_len)
         encrypted_bytes_len = data_len + HMAC_LEN + padding_len
         unencrypted_bytes = des3_decrypt(
             read_decr_key, IV, received_bytes[4:4+encrypted_bytes_len])
-        record_data = unencrypted_bytes[:data_len]
+        print("Record decrypted")
+        record_data = base64.decodestring(unencrypted_bytes[:data_len])
         hmac = unencrypted_bytes[data_len:data_len + HMAC_LEN].decode()
         if hmac_is_invalid(
             hmac, sequence_num, record_header, record_data, read_integ_key):
             print("The hmac was invalid for record number:", sequence_num)
+        print("HMAC check passed")
         data += record_data
-        print("finished processing record number:", sequence_num, "\n")
+        print("Finished processing record number:", sequence_num, "\n")
         sequence_num += 1
         if data_len < MAX_BASE64_DATA_LEN: # this was the last record
             break
@@ -224,7 +214,7 @@ def get_data_from_records(received_bytes, read_decr_key, read_integ_key):
 def bytestr2array(bytestr, el_size):
     bytes_arr = []
     final_arr_len = math.floor(len(bytestr) / el_size) + 1
-    print("File is broken up into this many pieces:", final_arr_len)
+    print("File was broken up into this many records:", final_arr_len, "\n")
     for i in range(final_arr_len):
         if i == 0:
             bytes_arr.append(bytestr[:el_size])
