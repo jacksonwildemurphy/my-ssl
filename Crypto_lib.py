@@ -1,7 +1,7 @@
 # Library encapsulating cryptography-related functions
 # used in this project.
 #
-# Written by Jackson Murphy. Last updated October 31, 2017
+# Written by Jackson Murphy. Last updated November 3, 2017
 
 import base64
 from Crypto.Cipher import DES3
@@ -14,7 +14,8 @@ from struct import *
 
 # Encryption block size for 3DES
 DES3_BLOCK_SIZE = 64
-# The maximum number of raw bytes allowed in the ssl-record data field
+# The maximum number of raw bytes allowed in the ssl-record data field,
+# before base64 encoding
 MAX_DATA_LEN = 16000  # 16 KB
 # The size of MAX_DATA_LEN after base64 encoding
 MAX_BASE64_DATA_LEN = 21617
@@ -28,12 +29,12 @@ def _create_des3_cipher(key, mode, iv):
     cipher = DES3.new(key, mode, iv)
     return cipher
 
-
+# encrypts a string and returns bytes
 def des3_encrypt(key, iv, msg):
     cipher = _create_des3_cipher(key, DES3.MODE_CBC, iv)
     return cipher.encrypt(msg)
 
-
+# decrypts bytes and returns bytes
 def des3_decrypt(key, iv, msg):
     cipher = _create_des3_cipher(key, DES3.MODE_CBC, iv)
     result = cipher.decrypt(msg)
@@ -59,6 +60,7 @@ def certificate2bytes(certificate):
 
 def bytes2certificate(bits):
     return crypto.load_certificate(crypto.FILETYPE_PEM, bits)
+
 # Returns True if the certificate is expired or the subject's common name
 # doesn't match what is expected
 def is_invalid_certificate(certificate, expected_name):
@@ -122,7 +124,7 @@ def hash_handshake(master_secret, messages, role):
 def hash_is_invalid(test_hash, master_secret, messages, role):
     expected_hash = hash_handshake(master_secret, messages, role)
     if test_hash != expected_hash:
-        print("Hash is invalid! Expected:", expected_hash, "But got:", test_hash )
+        print("Hash is invalid!\nExpected:", expected_hash, "\nBut got:", test_hash, "\n")
         return True
     else:
         return False
@@ -208,9 +210,8 @@ def get_data_from_records(received_bytes, read_decr_key, read_integ_key):
         received_bytes = received_bytes[(len(record_header) + encrypted_bytes_len):]
     return data
 
-
-
-
+# Splits a byte string into an array where each element is el_size long
+# (the last element may be shorter)
 def bytestr2array(bytestr, el_size):
     bytes_arr = []
     final_arr_len = math.floor(len(bytestr) / el_size) + 1
@@ -243,12 +244,14 @@ def get_hmac(sequence_num, record_header, data, integrity_key):
 def hmac_is_invalid(hmac, sequence_num, record_header, data, integrity_key):
     calculated_hmac = get_hmac(sequence_num, record_header, data, integrity_key)
     if hmac != calculated_hmac:
-        print("Hmac invalid! Was expecting:", hmac, "but got:", calculated_hmac)
+        print("Hmac invalid!\n Was expecting:", hmac, "\nBut got:", calculated_hmac, "\n")
         return True
     else:
         return False
 
-# convert to bits
-# msg = crypto.dump_certificate(crypto.FILETYPE_PEM, cert)
-
-# convert back, verify certificate and get public key
+# Helper method for Bob.py and Alice.py
+def get_app_mode(argv):
+    if len(argv) > 1:
+        return "corrupted"
+    else:
+        return "normal"

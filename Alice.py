@@ -1,4 +1,8 @@
-# Written by Jackson Murphy. Last updated October 31, 2017
+# Alice follows an SSL-esque protocol to mutually authenticate with Bob with
+# certificates, obtain keys for encryption and integrity protection, and then
+# receives a large file securely (encrypted and with integrity protection)
+
+# Written by Jackson Murphy. Last updated November 3, 2017
 
 import Crypto_lib as crypto
 import filecmp
@@ -75,6 +79,7 @@ keyed_hash = crypto.hash_handshake(master_secret, messages, "CLIENT")
 bobs_hash = client_socket.recv(1024).decode()
 if crypto.hash_is_invalid(bobs_hash, master_secret, messages, "SERVER"):
     print("Received a bad hash from Bob!\n")
+    client_socket.close(); exit(0)
 else:
     print("Bob's keyed hash passes verification!\n")
 

@@ -1,7 +1,12 @@
-# Written by Jackson Murphy. Last updated October 31, 2017.
+# Bob follows an SSL-esque protocol to mutually authenticate with Alice with
+# certificates, obtain keys for encryption and integrity protection, and then
+# sends a large file securely to Alice (encrypted and with integrity protection)
+
+# Written by Jackson Murphy. Last updated November 3, 2017.
 
 import Crypto_lib as crypto
 from socket import *
+import sys
 
 # Returns the names of the algorithms Alice wants to use to communicate,
 # and also returns Alice's certificate
@@ -33,6 +38,10 @@ def _send_cert_and_encrypted_nonce(certificate, bobs_encrypted_nonce, socket):
 
 
 ##### START OF PROGRAM #####
+
+# running this program as `$Bob.py -v corrupted` will simulate a failed handshake
+# app_mode is either "corrupted" or "normal"
+app_mode = crypto.get_app_mode(sys.argv)
 
 # Set up server
 server_port = 12000
@@ -68,9 +77,15 @@ while 1:
     print("Got master secret:", master_secret, "\n")
 
     # Compute a keyed hash of the master secret, previous handshake messages, and "SERVER"
+    # or "BLAH" depending on which scenario we are simulating
     messages = [first_msg_from_alice, first_msg_to_alice, second_msg_from_alice]
-    keyed_hash = crypto.hash_handshake(master_secret, messages, "SERVER")
-    connection_socket.send(keyed_hash.encode())
+    if(app_mode == "corrupted"):
+        keyed_hash = crypto.hash_handshake(master_secret, messages, "BLAH!")
+        connection_socket.send(keyed_hash.encode())
+        connection_socket.close(); break
+    else:
+        keyed_hash = crypto.hash_handshake(master_secret, messages, "SERVER")
+        connection_socket.send(keyed_hash.encode())
 
     # Receive Alice's hash of the handshake and verify it
     alices_hash = connection_socket.recv(1024).decode()
